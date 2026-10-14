@@ -4,9 +4,11 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "vite --config vite.config.ts",
+    "build": "npm run typecheck && vite build --config vite.config.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "preview": "vite preview --config vite.config.ts"
   },
   "dependencies": {
     "@vitejs/plugin-react": "4.3.4",
