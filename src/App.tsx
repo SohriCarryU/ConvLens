@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Activity, ArrowRight, Database, FolderOpen, Layers3, Pause, Pencil, Play, RefreshCw, Rocket, Upload } from 'lucide-react'
+import { ArrowRight, Database, Download, FileUp, FolderOpen, Layers3, Pause, Pencil, Play, RefreshCw, Rocket, Upload } from 'lucide-react'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { argmax, forward, INPUT } from './cnn.ts'
 import type { Forward, Sample } from './cnn.ts'
@@ -10,16 +10,16 @@ import { HandwritingPad } from './HandwritingPad.tsx'
 import { Trainer } from './trainer.ts'
 import { TrainingProcess } from './TrainingProcess.tsx'
 import { fmt, PixelMap, Probabilities } from './Visuals.tsx'
+import { loadStoredModels, modelFile, persistStoredModels, restoreModel } from './modelStorage.ts'
+import type { ModelRecord } from './modelStorage.ts'
 
 type Tab = '模型训练' | '模型体验'
 type Status = 'idle' | 'running' | 'paused' | 'complete'
 const statusLabel: Record<Status, string> = { idle: '尚未开始', running: '正在训练', paused: '已暂停', complete: '训练完成' }
-type ModelRecord = { id: string; name: string; trainer: Trainer }
-
 export default function App() {
   const [tab, setTab] = useState<Tab>('模型训练')
   const [trainer, setTrainer] = useState(() => new Trainer([], []))
-  const [models, setModels] = useState<ModelRecord[]>([])
+  const [models, setModels] = useState<ModelRecord[]>(loadStoredModels)
   const [activeModelId, setActiveModelId] = useState('')
   const [modelName, setModelName] = useState('')
   const [, setRevision] = useState(0)
@@ -36,6 +36,10 @@ export default function App() {
   const refresh = () => setRevision(v => v + 1)
 
   useEffect(() => {
+    persistStoredModels(models)
+  }, [models])
+
+  useEffect(() => {
     const controller = new AbortController()
     loadFolderDataset(controller.signal).then(data => {
       if (!controller.signal.aborted) setTrainer(new Trainer(data.samples, data.labels))
@@ -49,7 +53,10 @@ export default function App() {
     const timer = window.setInterval(() => {
       try {
         trainer.advance(rate)
-        if (trainer.complete) setStatus('complete')
+        if (trainer.complete) {
+          setStatus('complete')
+          saveFinishedModel()
+        }
         setRevision(v => v + 1)
       } catch (e) { setError(String(e)); setStatus('paused') }
     }, intervalMs)
@@ -65,10 +72,18 @@ export default function App() {
     if (!name) return false
     const existing = models.find(model => model.trainer === trainer)
     if (existing) { setActiveModelId(existing.id); return true }
-    const record = { id: crypto.randomUUID(), name, trainer }
+    const record: ModelRecord = { id: crypto.randomUUID(), name, trainer, source: 'browser' }
     setModels(current => current.some(model => model.trainer === trainer) ? current : [...current, record])
     setActiveModelId(record.id)
     return true
+  }
+  const saveFinishedModel = () => {
+    const savedAt = new Date().toISOString()
+    setModels(current => {
+      const next = current.map(record => record.trainer === trainer ? { ...record, savedAt } : record)
+      return next.some((record, index) => record !== current[index]) ? next : current
+    })
+    setNotice('训练完成，模型已保存到当前浏览器。也可以在模型体验中导出模型文件。')
   }
   const resume = () => {
     if (!trainer.ready || busy || trainer.complete) return
@@ -79,7 +94,8 @@ export default function App() {
     try {
       if (!trainer.steps && !registerModel()) return
       if (!trainer.steps) trainer.advance(rate)
-      setStatus(trainer.complete ? 'complete' : 'running'); setNotice(''); refresh()
+      if (trainer.complete) { setStatus('complete'); saveFinishedModel() } else { setStatus('running'); setNotice('') }
+      refresh()
     } catch (e) { setError(String(e)); setStatus('paused') }
   }
   const reloadFolder = async () => {
@@ -134,13 +150,36 @@ export default function App() {
       if (failures.length) setError(failures.join('；'))
     } finally { setBusy(false) }
   }
+  const importModel = async (file: File) => {
+    setError('')
+    try {
+      const parsed: unknown = JSON.parse(await file.text())
+      const restored = restoreModel(parsed, 'file')
+      if (!restored) throw new Error('模型文件格式无效，或与当前 ConvLens 版本不兼容。')
+      const record: ModelRecord = { ...restored, id: crypto.randomUUID(), name: restored.name || file.name.replace(/\.json$/i, '') }
+      setModels(current => [...current, record])
+      setActiveModelId(record.id)
+      setNotice(`已导入模型「${record.name}」，可在模型体验中选择。`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '模型文件读取失败。')
+    }
+  }
+  const exportModel = (record: ModelRecord) => {
+    const blob = new Blob([modelFile(record)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${record.name.replace(/[\\/:*?"<>|]/g, '_') || 'convlens-model'}.json`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
 
   const locked = busy || status === 'running'
   const metric = trainer.metrics[trainer.metrics.length - 1]
   return <div className="app-shell" data-model-step={trainer.steps} data-status={status}>
     <header className="topbar"><div className="topbar-inner">
       <div className="brand"><span className="brand-mark"><Layers3 size={19}/></span><span>Conv<span>Lens</span></span></div>
-      <nav className="top-nav" aria-label="实验室导航">{(['模型训练', '模型体验'] as Tab[]).map(item => <button key={item} className={tab === item ? 'active' : ''} aria-current={tab === item ? 'page' : undefined} onClick={() => setTab(item)}>{item === '模型训练' ? <Activity size={17}/> : <Rocket size={17}/>}<span>{item}</span></button>)}</nav>
+      <nav className="top-nav" aria-label="实验室导航">{(['模型训练', '模型体验'] as Tab[]).map(item => <button key={item} className={tab === item ? 'active' : ''} aria-current={tab === item ? 'page' : undefined} onClick={() => setTab(item)}><span>{item}</span></button>)}</nav>
       <div className="runtime"><i/> 浏览器本地训练</div>
     </div></header>
     <main>
@@ -158,7 +197,6 @@ export default function App() {
             {mode === 'folder' && <div className="dataset-actions"><button className="outline-btn" disabled={openingFolder} onClick={() => void openFolder()}><FolderOpen size={14}/>{openingFolder ? '正在打开…' : '打开素材文件夹'}</button><button className="outline-btn" disabled={locked} onClick={() => void reloadFolder()}><RefreshCw size={14}/>重新读取</button></div>}
             <div className="dataset-counts"><span>训练 <b>{trainer.train.length}</b></span><span>验证 <b>{trainer.validation.length}</b></span><span>类别 <b>{trainer.labels.length}</b></span></div>
             <div className="class-counts">{trainer.labels.map((name, i) => <span key={name}>{name}<b>{trainer.samples.filter(s => s.label === i).length} 张</b></span>)}</div>
-            <div className="sample-strip">{trainer.labels.flatMap((_, i) => trainer.samples.filter(s => s.label === i && s.split === 'train').slice(0, 2)).slice(0, 6).map(s => <div key={s.id}><PixelMap values={s.pixels} width={INPUT} gray label={s.name}/><span>{trainer.labels[s.label]}</span></div>)}</div>
             {mode === 'custom' && <><label className="field">上传图片的正确标签<input aria-label="上传标签" disabled={locked} value={uploadLabel} maxLength={24} placeholder="例如：猫" onChange={e => setUploadLabel(e.target.value)}/></label>
             <label className={`upload-button ${locked ? 'disabled' : ''}`}><Upload size={17}/>{busy ? '正在读取图片…' : '添加已标注图片'}<input type="file" accept="image/png,image/jpeg,image/webp" multiple disabled={locked} aria-label="添加训练图片" onChange={e => { void upload(Array.from(e.target.files ?? [])); e.target.value = '' }}/></label></>}
             <label className="field">模型名称<input aria-label="模型名称" maxLength={40} disabled={locked || Boolean(trainer.steps)} value={modelName} placeholder="例如：数字识别 v1" onChange={e => setModelName(e.target.value)}/></label>
@@ -169,17 +207,17 @@ export default function App() {
           </aside>
           <div className="training-main">
             <TrainingProcess snapshot={trainer.latest} labels={trainer.labels} running={status === 'running'} intervalMs={intervalMs} ready={trainer.ready}/>
-            <section className="panel metrics-panel"><div className="section-title"><h2>训练指标</h2><span className="caption">每完成一轮计算一次</span></div><div className="metric-row"><div><small>训练准确率</small><b>{metric ? `${fmt(metric.accuracy, 1)}%` : '—'}</b></div><div><small>验证准确率</small><b>{metric?.val != null ? `${fmt(metric.val, 1)}%` : '—'}</b></div><div><small>训练损失</small><b>{metric ? fmt(metric.loss) : '—'}</b></div></div>{trainer.metrics.length ? <div className="chart"><ResponsiveContainer width="100%" height={200}><LineChart data={trainer.metrics}><CartesianGrid stroke="#e6ece2" vertical={false}/><XAxis dataKey="epoch"/><YAxis domain={[0, 100]} width={35}/><Tooltip/><Line dataKey="accuracy" name="训练准确率 %" stroke="#477757" dot={false}/><Line dataKey="val" name="验证准确率 %" stroke="#b48144" dot={false}/></LineChart></ResponsiveContainer></div> : <p className="empty-note">第一轮完成后显示曲线。</p>}<p className="caption">验证图片不参与梯度更新。{!trainer.validation.length && '当前还没有验证图片，因此不显示验证准确率。'}训练进度仅保留在当前页面，刷新会重置。</p></section>
+            <section className="panel metrics-panel"><div className="section-title"><h2>训练指标</h2><span className="caption">每完成一轮计算一次</span></div><div className="metric-row"><div><small>训练准确率</small><b>{metric ? `${fmt(metric.accuracy, 1)}%` : '—'}</b></div><div><small>验证准确率</small><b>{metric?.val != null ? `${fmt(metric.val, 1)}%` : '—'}</b></div><div><small>训练损失</small><b>{metric ? fmt(metric.loss) : '—'}</b></div></div>{trainer.metrics.length ? <div className="chart"><ResponsiveContainer width="100%" height={200}><LineChart data={trainer.metrics}><CartesianGrid stroke="#e5e7eb" vertical={false}/><XAxis dataKey="epoch"/><YAxis domain={[0, 100]} width={35}/><Tooltip/><Line dataKey="accuracy" name="训练准确率 %" stroke="#111827" dot={false}/><Line dataKey="val" name="验证准确率 %" stroke="#64748b" dot={false}/></LineChart></ResponsiveContainer></div> : <p className="empty-note">第一轮完成后显示曲线。</p>}<p className="caption">验证图片不参与梯度更新。{!trainer.validation.length && '当前还没有验证图片，因此不显示验证准确率。'}训练进度仅保留在当前页面，刷新会重置。</p></section>
           </div>
         </div>
       </div>}
 
-      {tab === '模型体验' && <Inference trainer={trainer} models={models} activeModelId={activeModelId}/>} 
+      {tab === '模型体验' && <Inference trainer={trainer} models={models} activeModelId={activeModelId} onImportModel={importModel} onExportModel={exportModel}/>}
     </main>
   </div>
 }
 
-function Inference({ trainer, models, activeModelId }: { trainer: Trainer; models: ModelRecord[]; activeModelId: string }) {
+function Inference({ trainer, models, activeModelId, onImportModel, onExportModel }: { trainer: Trainer; models: ModelRecord[]; activeModelId: string; onImportModel: (file: File) => Promise<void>; onExportModel: (model: ModelRecord) => void }) {
   const [inputMode, setInputMode] = useState<'drawing' | 'image'>('drawing')
   const [drawing, setDrawing] = useState<ImageInput | null>(null)
   const [image, setImage] = useState<ImageInput | null>(null)
@@ -206,7 +244,7 @@ function Inference({ trainer, models, activeModelId }: { trainer: Trainer; model
   }
   const examples = selectedTrainer.validation.length ? selectedTrainer.validation : selectedTrainer.train
   return <div className="page">
-    <section className="page-heading"><div><h1>模型体验</h1><p>类别：{selectedTrainer.labels.join('、') || '暂无'} · {selectedModel ? `当前模型：${selectedModel.name}` : '当前是未命名训练草稿'}</p></div><label className="model-picker">选择模型<select aria-label="选择模型" value={selectedModelId} onChange={e => { setSelectedModelId(e.target.value); setImage(null); setResult(null); setError('') }}>{!activeModelId && <option value="">当前训练草稿</option>}{models.map(model => <option value={model.id} key={model.id}>{model.name} · {model.trainer.steps} 次更新</option>)}</select></label></section>
+    <section className="page-heading"><div><h1>模型体验</h1><p>类别：{selectedTrainer.labels.join('、') || '暂无'} · {selectedModel ? `当前模型：${selectedModel.name}` : '当前是未命名训练草稿'}</p></div><div className="model-tools"><label className="model-picker">选择模型<select aria-label="选择模型" value={selectedModelId} onChange={e => { setSelectedModelId(e.target.value); setImage(null); setResult(null); setError('') }}>{!activeModelId && <option value="">当前训练草稿</option>}{models.map(model => <option value={model.id} key={model.id}>{model.name} · 本地模型 · {model.trainer.steps} 次更新</option>)}</select></label><div className="model-file-actions"><label className="outline-btn file-button"><FileUp size={14}/>导入模型<input type="file" accept="application/json,.json" aria-label="导入模型文件" onChange={e => { const file = e.target.files?.[0]; if (file) void onImportModel(file); e.target.value = '' }}/></label>{selectedModel && <button className="outline-btn" onClick={() => onExportModel(selectedModel)}><Download size={14}/>导出模型</button>}</div></div></section>
     <div className="inference-grid">
       <section className="panel inference-input">
         <div className="input-switch" role="group" aria-label="识别输入方式">

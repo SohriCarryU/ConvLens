@@ -20,7 +20,7 @@ export function PixelMap({ values, width, label, signed = false, gray = false, w
     const max = scale ?? Math.max(...values.map(Math.abs), 1e-8)
     values.forEach((v, i) => {
       const n = Math.min(1, Math.abs(v) / max)
-      if (revealed !== undefined && i > revealed) ctx.fillStyle = '#edf0e9'
+      if (revealed !== undefined && i > revealed) ctx.fillStyle = '#f3f4f6'
       else if (gray) { const c = Math.round(Math.max(0, Math.min(1, v)) * 255); ctx.fillStyle = `rgb(${c},${c},${c})` }
       else if (signed && v < 0) ctx.fillStyle = `rgb(${Math.round(246 - n * 45)},${Math.round(241 - n * 138)},${Math.round(235 - n * 139)})`
       else ctx.fillStyle = `rgb(${Math.round(240 - n * 186)},${Math.round(245 - n * 122)},${Math.round(234 - n * 158)})`
