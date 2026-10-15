@@ -55,8 +55,8 @@ function LiveProcess({ snapshot, labels, running, intervalMs }: {
       <div className="section-title"><div><h2>训练过程</h2><p className="caption">第 {snapshot.epoch} 轮 · 第 {snapshot.batch} 批 · 已更新 #{snapshot.step} · {snapshot.traces.length} 张图片</p></div><span className={`live-badge ${running ? 'running' : ''}`}><i/>{running ? '实时更新' : '最近一批'}</span></div>
       <div className="process-selectors">
         <label>批次样本<select aria-label="当前批次样本" value={selectedSample} onChange={e => setSampleIndex(Number(e.target.value))}>{snapshot.traces.map((t, i) => <option value={i} key={i}>{i + 1}. {t.sample.name} / 标签 {labels[t.sample.label]}</option>)}</select></label>
-        <label>计算明细<select aria-label="卷积核" value={filter} onChange={e => setFilter(Number(e.target.value))}>{Array.from({ length: FILTERS }, (_, i) => <option value={i} key={i}>卷积核 {i + 1}</option>)}</select></label>
       </div>
+      <p className="caption process-selector-note">四个卷积核的响应、梯度和更新会同时显示；点击某个卷积核的权重，只用于联动查看该权重的乘加、梯度和更新细节。</p>
       <nav className="process-route" aria-label="训练过程定位">{stages.map(([id, title], i) => <a key={id} href={`#training-${id}`}><span>{i + 1}</span>{title}{i < stages.length - 1 && <ArrowRight size={12}/>}</a>)}</nav>
     </section>
 

@@ -1,8 +1,40 @@
 # ConvLens
 
-面向人工智能通识课的 CNN 训练实验室。重点是看清一次学习的完整链路，而不是只观看准确率曲线。界面采用白色简约风格。
+<p align="center">
+  <strong>在浏览器里看见 CNN 的每一次学习</strong><br>
+  面向人工智能通识课的卷积神经网络可视化实验室
+</p>
 
-## 开始使用
+<p align="center">
+  <a href="https://github.com/SohriCarryU/ConvLens"><img src="https://img.shields.io/badge/status-learning%20lab-2563eb?style=flat-square" alt="项目状态"></a>
+  <img src="https://img.shields.io/badge/runtime-browser-16a34a?style=flat-square" alt="浏览器运行">
+  <img src="https://img.shields.io/badge/TypeScript-5.7-3178c6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript">
+  <img src="https://img.shields.io/badge/Vite-5-646cff?style=flat-square&logo=vite&logoColor=white" alt="Vite">
+</p>
+
+<p align="center">
+  <a href="#快速开始">快速开始</a> ·
+  <a href="#你能看到什么">功能亮点</a> ·
+  <a href="#数据与模型">数据与模型</a> ·
+  <a href="#真实计算链路">计算链路</a> ·
+  <a href="#验证与构建">开发验证</a>
+</p>
+
+---
+
+ConvLens 把一次 CNN 训练拆成可以逐步观察的实验过程：从输入图片、卷积扫描、ReLU 与池化，到分类、损失、反向传播和参数更新。所有计算都在浏览器中完成，界面采用白色简约风格。
+
+## 你能看到什么
+
+- **七阶段训练过程**：输入图片、卷积扫描、激活与池化、分类预测、标签与损失、反向传播、更新与反馈。
+- **同步批次快照**：每个批次完成后，所有视图一起刷新，避免混用不同批次或尚未应用的参数。
+- **四个卷积核全量展示**：响应、权重梯度、更新前后权重和变化量同时呈现；点击权重即可联动查看乘加、梯度贡献和更新公式。
+- **可回放的卷积扫描**：自动扫描当前 3×3 窗口，也可以点击图片或拖动滑块定位到任意位置。
+- **模型体验**：支持浏览器手写、验证样本和上传图片测试，显示类别概率与卷积特征图。
+- **本地模型管理**：训练完成后自动保存到浏览器，可在模型体验页选择，也可从顶部导出 JSON 或导入已有模型。
+- **自定义数据集**：从 public/training-data/ 读取类别文件夹，也可以临时上传带标签的图片。
+
+## 快速开始
 
 需要 Node.js 22.18+（数值测试使用原生 TypeScript 类型剥离）。
 

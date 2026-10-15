@@ -83,7 +83,7 @@ export default function App() {
       const next = current.map(record => record.trainer === trainer ? { ...record, savedAt } : record)
       return next.some((record, index) => record !== current[index]) ? next : current
     })
-    setNotice('训练完成，模型已保存到当前浏览器。也可以在模型体验中导出模型文件。')
+    setNotice('训练完成，模型已保存到当前浏览器。可从页面顶部导出模型文件。')
   }
   const resume = () => {
     if (!trainer.ready || busy || trainer.complete) return
@@ -176,6 +176,7 @@ export default function App() {
 
   const locked = busy || status === 'running'
   const metric = trainer.metrics[trainer.metrics.length - 1]
+  const completedModel = models.find(model => model.trainer === trainer)
   return <div className="app-shell" data-model-step={trainer.steps} data-status={status}>
     <header className="topbar"><div className="topbar-inner">
       <div className="brand"><span className="brand-mark"><Layers3 size={19}/></span><span>Conv<span>Lens</span></span></div>
@@ -183,7 +184,7 @@ export default function App() {
       <div className="runtime"><i/> 浏览器本地训练</div>
     </div></header>
     <main>
-      <div className="session-bar"><span>{busy ? '正在读取素材…' : statusLabel[status]}</span><span>{modelName ? `模型：${modelName}` : '当前训练尚未命名'} · 已完成 {trainer.epoch} / {trainer.maxEpochs} 轮 · 已更新 <b>{trainer.steps}</b> 次</span><label className="speed-control">训练速度<select aria-label="训练速度" value={intervalMs} onChange={e => setIntervalMs(Number(e.target.value))}><option value={200}>2× · 0.2 秒/批</option><option value={400}>正常 · 0.4 秒/批</option><option value={1000}>慢速 · 1 秒/批</option><option value={2000}>慢速 · 2 秒/批</option><option value={5000}>慢速 · 5 秒/批</option><option value={10000}>慢速 · 10 秒/批</option></select></label>{(status === 'running' || status === 'paused') && <button onClick={status === 'running' ? () => setStatus('paused') : resume} disabled={busy}>{status === 'running' ? <Pause size={14}/> : <Play size={14}/>} {status === 'running' ? '暂停训练' : '继续训练'}</button>}</div>
+      <div className="session-bar"><span className={`session-status ${busy ? 'loading' : status}`}>{busy ? '正在读取素材…' : statusLabel[status]}</span><span>{modelName ? `模型：${modelName}` : '当前训练尚未命名'} · 已完成 {trainer.epoch} / {trainer.maxEpochs} 轮 · 已更新 <b>{trainer.steps}</b> 次</span>{status === 'complete' && completedModel && <button className="outline-btn export-model-btn" onClick={() => exportModel(completedModel)}><Download size={14}/>导出模型</button>}<label className="speed-control">训练速度<select aria-label="训练速度" value={intervalMs} onChange={e => setIntervalMs(Number(e.target.value))}><option value={200}>2× · 0.2 秒/批</option><option value={400}>正常 · 0.4 秒/批</option><option value={1000}>慢速 · 1 秒/批</option><option value={2000}>慢速 · 2 秒/批</option><option value={5000}>慢速 · 5 秒/批</option><option value={10000}>慢速 · 10 秒/批</option></select></label>{(status === 'running' || status === 'paused') && <button onClick={status === 'running' ? () => setStatus('paused') : resume} disabled={busy}>{status === 'running' ? <Pause size={14}/> : <Play size={14}/>} {status === 'running' ? '暂停训练' : '继续训练'}</button>}</div>
       {error && <div role="alert" className="message error">{error}<button onClick={() => setError('')} aria-label="关闭错误">×</button></div>}
       {notice && <div role="status" className="message">{notice}<button onClick={() => setNotice('')} aria-label="关闭提示">×</button></div>}
 
@@ -207,17 +208,17 @@ export default function App() {
           </aside>
           <div className="training-main">
             <TrainingProcess snapshot={trainer.latest} labels={trainer.labels} running={status === 'running'} intervalMs={intervalMs} ready={trainer.ready}/>
-            <section className="panel metrics-panel"><div className="section-title"><h2>训练指标</h2><span className="caption">每完成一轮计算一次</span></div><div className="metric-row"><div><small>训练准确率</small><b>{metric ? `${fmt(metric.accuracy, 1)}%` : '—'}</b></div><div><small>验证准确率</small><b>{metric?.val != null ? `${fmt(metric.val, 1)}%` : '—'}</b></div><div><small>训练损失</small><b>{metric ? fmt(metric.loss) : '—'}</b></div></div>{trainer.metrics.length ? <div className="chart"><ResponsiveContainer width="100%" height={200}><LineChart data={trainer.metrics}><CartesianGrid stroke="#e5e7eb" vertical={false}/><XAxis dataKey="epoch"/><YAxis domain={[0, 100]} width={35}/><Tooltip/><Line dataKey="accuracy" name="训练准确率 %" stroke="#111827" dot={false}/><Line dataKey="val" name="验证准确率 %" stroke="#64748b" dot={false}/></LineChart></ResponsiveContainer></div> : <p className="empty-note">第一轮完成后显示曲线。</p>}<p className="caption">验证图片不参与梯度更新。{!trainer.validation.length && '当前还没有验证图片，因此不显示验证准确率。'}训练进度仅保留在当前页面，刷新会重置。</p></section>
+            <section className="panel metrics-panel"><div className="section-title"><h2>训练指标</h2><span className="caption">每完成一轮计算一次</span></div><div className="metric-row"><div><small>训练准确率</small><b>{metric ? `${fmt(metric.accuracy, 1)}%` : '—'}</b></div><div><small>验证准确率</small><b>{metric?.val != null ? `${fmt(metric.val, 1)}%` : '—'}</b></div><div><small>训练损失</small><b>{metric ? fmt(metric.loss) : '—'}</b></div></div>{trainer.metrics.length ? <div className="chart"><ResponsiveContainer width="100%" height={200}><LineChart data={trainer.metrics}><CartesianGrid stroke="#e5e7eb" vertical={false}/><XAxis dataKey="epoch"/><YAxis domain={[0, 100]} width={35}/><Tooltip/><Line dataKey="accuracy" name="训练准确率 %" stroke="#2563eb" dot={false}/><Line dataKey="val" name="验证准确率 %" stroke="#0f766e" dot={false}/></LineChart></ResponsiveContainer></div> : <p className="empty-note">第一轮完成后显示曲线。</p>}<p className="caption">验证图片不参与梯度更新。{!trainer.validation.length && '当前还没有验证图片，因此不显示验证准确率。'}训练进度仅保留在当前页面，刷新会重置。</p></section>
           </div>
         </div>
       </div>}
 
-      {tab === '模型体验' && <Inference trainer={trainer} models={models} activeModelId={activeModelId} onImportModel={importModel} onExportModel={exportModel}/>}
+      {tab === '模型体验' && <Inference trainer={trainer} models={models} activeModelId={activeModelId} onImportModel={importModel}/>}
     </main>
   </div>
 }
 
-function Inference({ trainer, models, activeModelId, onImportModel, onExportModel }: { trainer: Trainer; models: ModelRecord[]; activeModelId: string; onImportModel: (file: File) => Promise<void>; onExportModel: (model: ModelRecord) => void }) {
+function Inference({ trainer, models, activeModelId, onImportModel }: { trainer: Trainer; models: ModelRecord[]; activeModelId: string; onImportModel: (file: File) => Promise<void> }) {
   const [inputMode, setInputMode] = useState<'drawing' | 'image'>('drawing')
   const [drawing, setDrawing] = useState<ImageInput | null>(null)
   const [image, setImage] = useState<ImageInput | null>(null)
@@ -244,7 +245,7 @@ function Inference({ trainer, models, activeModelId, onImportModel, onExportMode
   }
   const examples = selectedTrainer.validation.length ? selectedTrainer.validation : selectedTrainer.train
   return <div className="page">
-    <section className="page-heading"><div><h1>模型体验</h1><p>类别：{selectedTrainer.labels.join('、') || '暂无'} · {selectedModel ? `当前模型：${selectedModel.name}` : '当前是未命名训练草稿'}</p></div><div className="model-tools"><label className="model-picker">选择模型<select aria-label="选择模型" value={selectedModelId} onChange={e => { setSelectedModelId(e.target.value); setImage(null); setResult(null); setError('') }}>{!activeModelId && <option value="">当前训练草稿</option>}{models.map(model => <option value={model.id} key={model.id}>{model.name} · 本地模型 · {model.trainer.steps} 次更新</option>)}</select></label><div className="model-file-actions"><label className="outline-btn file-button"><FileUp size={14}/>导入模型<input type="file" accept="application/json,.json" aria-label="导入模型文件" onChange={e => { const file = e.target.files?.[0]; if (file) void onImportModel(file); e.target.value = '' }}/></label>{selectedModel && <button className="outline-btn" onClick={() => onExportModel(selectedModel)}><Download size={14}/>导出模型</button>}</div></div></section>
+    <section className="page-heading"><div><h1>模型体验</h1><p>类别：{selectedTrainer.labels.join('、') || '暂无'} · {selectedModel ? `当前模型：${selectedModel.name}` : '当前是未命名训练草稿'}</p></div><div className="model-tools"><label className="model-picker">选择模型<select aria-label="选择模型" value={selectedModelId} onChange={e => { setSelectedModelId(e.target.value); setImage(null); setResult(null); setError('') }}>{!activeModelId && <option value="">当前训练草稿</option>}{models.map(model => <option value={model.id} key={model.id}>{model.name} · 本地模型 · {model.trainer.steps} 次更新</option>)}</select></label><div className="model-file-actions"><label className="outline-btn file-button"><FileUp size={14}/>导入模型<input type="file" accept="application/json,.json" aria-label="导入模型文件" onChange={e => { const file = e.target.files?.[0]; if (file) void onImportModel(file); e.target.value = '' }}/></label></div></div></section>
     <div className="inference-grid">
       <section className="panel inference-input">
         <div className="input-switch" role="group" aria-label="识别输入方式">
