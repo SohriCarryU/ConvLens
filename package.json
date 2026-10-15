@@ -1,6 +1,6 @@
 {
   "name": "convlens",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "面向人工智能通识课的 CNN 演示与实操教学工具",
   "author": "SohriCarryU",
   "type": "module",
@@ -46,8 +46,18 @@
     },
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
     "nsis": {
@@ -60,7 +70,10 @@
       "artifactName": "ConvLens-${version}-Portable-${arch}.${ext}"
     },
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "artifactName": "ConvLens-${version}-mac-${arch}.${ext}",
       "category": "public.app-category.education"
     }
