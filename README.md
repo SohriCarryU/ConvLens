@@ -159,3 +159,40 @@ npm run build
 - 构建前执行 TypeScript 检查，产物位于 `dist/`。
 
 主要文件：`src/cnn.ts`（前向与反向计算）、`src/trainer.ts`（批次和更新）、`src/TrainingProcess.tsx`（七阶段实时训练过程）、`src/folderDataset.ts`（图片文件读取）、`scripts/training-files.mjs`（目录扫描与清单）、`src/App.tsx`（训练与数据管理）。
+
+## 发布桌面版本
+
+项目支持用 Electron 打包为 Windows 和 macOS 桌面应用。桌面版会在本机启动一个仅监听 `127.0.0.1` 的静态服务，因此训练素材读取、浏览器本地模型保存和“打开素材文件夹”功能都能继续使用。
+
+本机开发或测试桌面版：
+
+```bash
+npm run desktop:dev
+```
+
+本机生成当前操作系统的安装包：
+
+```bash
+npm run desktop:dist -- --mac --arm64  # Apple Silicon Mac
+npm run desktop:dist -- --mac --x64    # Intel Mac
+npm run desktop:dist -- --win --x64    # Windows x64
+```
+
+产物会写入 `release/`。Windows 会生成安装版和便携版；macOS 会生成 DMG 和 ZIP。Windows 和 macOS 包没有默认代码签名，首次启动时系统可能显示安全提示；面向公开分发时，建议分别使用代码签名证书和 Apple notarization。
+
+推送版本标签后，GitHub Actions 会自动在三个构建环境中打包并创建 Release：
+
+```bash
+git add .
+git commit -m "release: v0.1.0"
+git tag -a v0.1.0 -m "ConvLens v0.1.0"
+git push origin main --follow-tags
+```
+
+工作流会生成：
+
+- Windows x64：安装版 `.exe` 和便携版 `.exe`
+- macOS Intel：`.dmg` 和 `.zip`
+- macOS Apple Silicon：`.dmg` 和 `.zip`
+
+版本号来自 `package.json`。发布下一个版本前，先更新 `version`，再创建对应的 `v*` 标签。
