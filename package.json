@@ -10,10 +10,11 @@
     "dev": "vite --config vite.config.ts",
     "build": "npm run typecheck && vite build --config vite.config.ts",
     "desktop:dev": "npm run build && electron .",
-    "desktop:dist": "npm run build && electron-builder",
+    "desktop:dist": "npm run build && electron-builder --config electron-builder.config.cjs",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "preview": "vite preview --config vite.config.ts"
+    "preview": "vite preview --config vite.config.ts",
+    "test:release": "node --test tests/release-security.test.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "4.3.4",
@@ -28,7 +29,7 @@
     "@types/react": "19.0.8",
     "@types/react-dom": "19.0.3",
     "electron": "latest",
-    "electron-builder": "latest"
+    "electron-builder": "26.15.3"
   },
   "build": {
     "appId": "com.sohri.convlens",

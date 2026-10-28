@@ -178,14 +178,17 @@ npm run desktop:dist -- --mac --x64    # Intel Mac
 npm run desktop:dist -- --win --x64    # Windows x64
 ```
 
-产物会写入 `release/`。Windows 会生成安装版和便携版；macOS 会生成 DMG 和 ZIP。Windows 和 macOS 包没有默认代码签名，首次启动时系统可能显示安全提示；面向公开分发时，建议分别使用代码签名证书和 Apple notarization。
+产物会写入 `release/`。Windows 会生成安装版和便携版；macOS 会生成 DMG 和 ZIP。默认 `unsigned` 模式不使用开发者证书，首次启动时系统可能显示安全提示。公开分发可配置 `signed` 模式：Windows 支持 PFX 或 Azure 云签名，macOS 支持 Developer ID 签名、Hardened Runtime 与 Apple 公证。凭据仅通过 GitHub Secrets 注入；启用签名后，缺少凭据或原生验证失败都会阻止发布。配置方法、证书前置条件及验证范围见 [桌面安全发布指南](docs/desktop-security-release.md)。
 
-推送版本标签后，GitHub Actions 会自动在三个构建环境中打包并创建 Release：
+推送新的版本标签后，GitHub Actions 会在原有三个构建环境中打包，验证后先创建草稿 Release；下载附件复核 SHA256 成功后才公开。已有 Release 会被拒绝覆盖。手动运行工作流（包括选择已有标签）仅构建和验证，不会发布。
+
+例如，完成下一版本号更新后：
 
 ```bash
+version=0.1.3  # 示例；必须与 package.json 中的新版本号一致
 git add .
-git commit -m "release: v0.1.0"
-git tag -a v0.1.0 -m "ConvLens v0.1.0"
+git commit -m "release: v${version}"
+git tag -a "v${version}" -m "ConvLens v${version}"
 git push origin main --follow-tags
 ```
 
@@ -195,4 +198,4 @@ git push origin main --follow-tags
 - macOS Intel：`.dmg` 和 `.zip`
 - macOS Apple Silicon：`.dmg` 和 `.zip`
 
-版本号来自 `package.json`。发布下一个版本前，先更新 `version`，再创建对应的 `v*` 标签。
+版本号来自 `package.json`。发布下一个版本前，先更新 `version`（包括 lockfile 根版本号），再创建对应的 `v*` 标签。六个安装包保持现有命名；Release 同时提供 `SHA256SUMS.txt` 和 `SECURITY-VERIFICATION.json`，说明该次构建的签名模式和各产物哈希。SHA256 能检查完整性，不能替代发布者签名。v0.1.2 的既有安装包仍然是未签名、未公证版本。

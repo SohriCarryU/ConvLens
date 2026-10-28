@@ -4,9 +4,9 @@ ConvLens 是面向人工智能通识课的演示与实操教学工具。本次�
 
 | 电脑 | 推荐下载 | 其他选择 |
 | --- | --- | --- |
-| Windows x64 | `ConvLens-0.1.2-Setup-x64.exe` 安装版 | `ConvLens-0.1.2-Portable-x64.exe` 免安装版 |
-| Apple Silicon Mac（M 系列） | `ConvLens-0.1.2-mac-arm64.dmg` | 同架构 ZIP |
-| Intel Mac | `ConvLens-0.1.2-mac-x64.dmg` | 同架构 ZIP |
+| Windows x64 | `ConvLens-<版本>-Setup-x64.exe` 安装版 | `ConvLens-<版本>-Portable-x64.exe` 免安装版 |
+| Apple Silicon Mac（M 系列） | `ConvLens-<版本>-mac-arm64.dmg` | 同架构 ZIP |
+| Intel Mac | `ConvLens-<版本>-mac-x64.dmg` | 同架构 ZIP |
 
 Windows 安装版按向导安装；便携版双击启动。Mac 打开 DMG，将 ConvLens 拖入“应用程序”。GitHub 自动附带的 Source code 压缩包供开发使用。
 
@@ -18,7 +18,7 @@ Windows 安装版按向导安装；便携版双击启动。Mac 打开 DMG，将 
 
 ## 当前版本说明
 
-- 安装包未使用开发者证书签名，Mac 也未经过 Apple 公证；系统可能拦截或提示无法验证开发者。请确认下载来源为本仓库的 Release；受学校设备管理策略限制时，请由管理员协助安装。
+- 本次签名和公证状态见上方由 CI 生成的“桌面应用安全状态”及附件 `SECURITY-VERIFICATION.json`。请确认下载来源为本仓库的 Release；受学校设备管理策略限制时，请由管理员协助安装。
 - 桌面版使用本机 `127.0.0.1:47831`，运行时需保证该端口未被其他程序占用。
 - 安装包内素材清单在构建时生成；新增类别或图片可使用“临时上传图片”，修改内置素材目录后不会动态重建清单。
-- 附带 `SHA256SUMS.txt` 可校验下载文件。
+- 附带 `SHA256SUMS.txt` 可校验下载文件。Windows 即使已签名，SmartScreen 仍可能因信誉或设备策略提示。

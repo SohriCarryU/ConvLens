@@ -5,3 +5,10 @@ release
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
+
+# Desktop signing material must only come from local secure storage / CI Secrets.
+*.p12
+*.pfx
+*.p8
+*.keychain
+*.keychain-db
