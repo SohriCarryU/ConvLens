@@ -4,38 +4,93 @@ on:
   push:
     tags:
       - 'v*'
+  pull_request:
+    paths:
+      - '.github/workflows/release.yml'
+      - 'electron-builder.config.cjs'
+      - 'build/**'
+      - 'electron/**'
+      - 'scripts/**'
+      - 'tests/release-security.test.mjs'
+      - 'package*.json'
+      - 'docs/release-notes.md'
   workflow_dispatch:
+    inputs:
+      signing_mode:
+        description: Signing mode (manual runs build and verify only; never publish)
+        type: choice
+        default: configured
+        options:
+          - configured
+          - unsigned
+          - signed
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # PRs never receive signing secrets. Tags use the repository variable.
+  CONVLENS_SIGNING_MODE: ${{ github.event_name == 'pull_request' && 'unsigned' || (github.event_name == 'workflow_dispatch' && inputs.signing_mode != 'configured' && inputs.signing_mode || vars.DESKTOP_SIGNING_MODE || 'unsigned') }}
+  WINDOWS_SIGNING_PROVIDER: ${{ vars.WINDOWS_SIGNING_PROVIDER || 'pfx' }}
 
 jobs:
+  preflight:
+    name: Refuse existing releases
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/ensure-new-release.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build:
     name: Build ${{ matrix.name }}
+    needs: preflight
+    if: ${{ !cancelled() && (needs.preflight.result == 'success' || needs.preflight.result == 'skipped') }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: Windows x64
+            target: win-x64
             os: windows-latest
             args: --win --x64
           - name: macOS Intel
+            target: mac-x64
             os: macos-15-intel
+            arch: x64
             args: --mac --x64
           - name: macOS Apple Silicon
+            target: mac-arm64
             os: macos-15
+            arch: arm64
             args: --mac --arm64
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+
+      - name: Validate signing mode
+        run: node -e "require('./scripts/desktop-signing.cjs').signingMode()"
 
       - name: Install dependencies
         run: npm ci
@@ -47,54 +102,142 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Build desktop package
+      - name: Test release security policy
+        run: npm run test:release
+
+      - name: Build unsigned desktop package
+        if: env.CONVLENS_SIGNING_MODE == 'unsigned'
         run: npm run desktop:dist -- --publish never ${{ matrix.args }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Build and sign Windows package
+        if: env.CONVLENS_SIGNING_MODE == 'signed' && runner.os == 'Windows'
+        run: npm run desktop:dist -- --publish never ${{ matrix.args }}
+        env:
+          WIN_CSC_LINK: ${{ env.WINDOWS_SIGNING_PROVIDER == 'pfx' && secrets.WIN_CSC_LINK || '' }}
+          WIN_CSC_KEY_PASSWORD: ${{ env.WINDOWS_SIGNING_PROVIDER == 'pfx' && secrets.WIN_CSC_KEY_PASSWORD || '' }}
+          WIN_CERT_SHA1: ${{ secrets.WIN_CERT_SHA1 }}
+          WIN_PUBLISHER_NAME: ${{ secrets.WIN_PUBLISHER_NAME }}
+          AZURE_TENANT_ID: ${{ env.WINDOWS_SIGNING_PROVIDER == 'azure' && secrets.AZURE_TENANT_ID || '' }}
+          AZURE_CLIENT_ID: ${{ env.WINDOWS_SIGNING_PROVIDER == 'azure' && secrets.AZURE_CLIENT_ID || '' }}
+          AZURE_CLIENT_SECRET: ${{ env.WINDOWS_SIGNING_PROVIDER == 'azure' && secrets.AZURE_CLIENT_SECRET || '' }}
+          AZURE_SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_PROFILE: ${{ secrets.AZURE_SIGNING_PROFILE }}
+
+      - name: Build, sign and notarize macOS package
+        if: env.CONVLENS_SIGNING_MODE == 'signed' && runner.os == 'macOS'
+        run: node scripts/build-signed-mac.mjs ${{ matrix.arch }}
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          MAC_NOTARY_KEY_BASE64: ${{ secrets.MAC_NOTARY_KEY_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Verify Windows signatures, publisher and timestamps
+        if: env.CONVLENS_SIGNING_MODE == 'signed' && runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/verify-windows-signatures.ps1
+        env:
+          WIN_CERT_SHA1: ${{ secrets.WIN_CERT_SHA1 }}
+          WIN_PUBLISHER_NAME: ${{ secrets.WIN_PUBLISHER_NAME }}
+
+      - name: Verify macOS signatures and notarization in DMG and ZIP
+        if: env.CONVLENS_SIGNING_MODE == 'signed' && runner.os == 'macOS'
+        run: bash scripts/verify-mac-signatures.sh ${{ matrix.arch }}
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Verify package names and record hashes after native verification
+        run: node scripts/release-artifacts.mjs collect release ${{ matrix.target }}
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: convlens-${{ matrix.name }}
+          name: convlens-platform-${{ matrix.target }}
           path: |
             release/*.exe
             release/*.dmg
             release/*.zip
+            release/security-${{ matrix.target }}.json
           if-no-files-found: error
 
-  publish:
-    name: Publish GitHub release
+  verify:
+    name: Verify complete release set
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download all build artifacts
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Download platform artifacts
         uses: actions/download-artifact@v4
         with:
+          pattern: convlens-platform-*
           path: release
           merge-multiple: true
-
-      - name: Verify all platform packages
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          test -s "release/ConvLens-${version}-Setup-x64.exe"
-          test -s "release/ConvLens-${version}-Portable-x64.exe"
-          test -s "release/ConvLens-${version}-mac-x64.dmg"
-          test -s "release/ConvLens-${version}-mac-x64.zip"
-          test -s "release/ConvLens-${version}-mac-arm64.dmg"
-          test -s "release/ConvLens-${version}-mac-arm64.zip"
-          cd release
-          sha256sum *.exe *.dmg *.zip > SHA256SUMS.txt
-
-      - name: Publish release assets
-        uses: softprops/action-gh-release@v2
+      - name: Validate all six packages, security reports and SHA256
+        run: node scripts/release-artifacts.mjs combine release
+      - name: Keep verified release set for manual runs and publication
+        uses: actions/upload-artifact@v4
         with:
-          generate_release_notes: true
-          body_path: docs/release-notes.md
-          fail_on_unmatched_files: true
-          files: |
+          name: convlens-verified-release
+          path: |
             release/*.exe
             release/*.dmg
             release/*.zip
             release/SHA256SUMS.txt
+            release/SECURITY-VERIFICATION.json
+            release/release-notes.md
+          if-no-files-found: error
+
+  publish:
+    name: Publish verified GitHub release
+    needs: verify
+    if: ${{ !cancelled() && needs.verify.result == 'success' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: convlens-verified-release
+          path: release
+      - name: Recheck hashes and refuse an existing release
+        run: |
+          node scripts/release-artifacts.mjs verify release
+          node scripts/ensure-new-release.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create draft and upload assets without overwriting
+        run: |
+          gh release create "$GITHUB_REF_NAME" --verify-tag --draft --title "$GITHUB_REF_NAME" --notes-file release/release-notes.md --generate-notes
+          gh release upload "$GITHUB_REF_NAME" release/*.exe release/*.dmg release/*.zip release/SHA256SUMS.txt release/SECURITY-VERIFICATION.json
+      - name: Download GitHub assets and verify before making the release public
+        run: |
+          gh release download "$GITHUB_REF_NAME" --dir downloaded
+          node scripts/release-artifacts.mjs verify downloaded
+          cmp release/SHA256SUMS.txt downloaded/SHA256SUMS.txt
+          cmp release/SECURITY-VERIFICATION.json downloaded/SECURITY-VERIFICATION.json
+      - name: Publish the verified draft
+        run: |
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            gh release edit "$GITHUB_REF_NAME" --draft=false --prerelease --latest=false
+          else
+            gh release edit "$GITHUB_REF_NAME" --draft=false --latest
+          fi
