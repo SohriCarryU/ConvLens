@@ -180,7 +180,7 @@ npm run desktop:dist -- --win --x64    # Windows x64
 
 产物会写入 `release/`。Windows 会生成安装版和便携版；macOS 会生成 DMG 和 ZIP。默认 `unsigned` 模式不使用开发者证书，首次启动时系统可能显示安全提示。公开分发可配置 `signed` 模式：Windows 支持 PFX 或 Azure 云签名，macOS 支持 Developer ID 签名、Hardened Runtime 与 Apple 公证。凭据仅通过 GitHub Secrets 注入；启用签名后，缺少凭据或原生验证失败都会阻止发布。配置方法、证书前置条件及验证范围见 [桌面安全发布指南](docs/desktop-security-release.md)。
 
-推送新的版本标签后，GitHub Actions 会在原有三个构建环境中打包，验证后先创建草稿 Release；下载附件复核 SHA256 成功后才公开。已有 Release 会被拒绝覆盖。手动运行工作流（包括选择已有标签）仅构建和验证，不会发布。
+推送新的版本标签后，GitHub Actions 会在原有三个构建环境中打包，验证后先创建草稿 Release；下载附件复核 SHA256 成功后才公开。已有 Release 会被拒绝覆盖。本次改动中的工作流在手动运行时仅构建和验证，不会发布。测试签名请选包含改动的可信分支；不要在 v0.1.2 等旧标签上执行旧工作流。
 
 例如，完成下一版本号更新后：
 
